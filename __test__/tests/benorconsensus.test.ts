@@ -173,7 +173,33 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       }
     });
 
-    test.todo("Hidden test - Finality is reached - Unanimous Agreement - 2 pt");
+    // test.todo("Hidden test - Finality is reached - Unanimous Agreement - 2 pt");
+    it("Hidden test - Finality is reached - Unanimous Agreement - 2 pt", async () => {
+      const scenarios = [
+        {
+          faultyArray: [false, false],
+          initialValues: [1, 1] as Value[],
+        },
+        {
+          faultyArray: [false, false, false],
+          initialValues: [1, 1, 1] as Value[],
+        }
+      ];
+    
+      for (const { faultyArray, initialValues } of scenarios) {
+        const _servers = await launchNetwork(
+          faultyArray.length,
+          faultyArray.filter((el) => el).length,
+          initialValues,
+          faultyArray
+        );
+    
+        await startConsensus(faultyArray.length);
+        await stopConsensus(_servers.length);
+        await delay(100);
+        await closeAllServers(_servers);
+      }
+    });
 
     it("Finality is reached - Simple Majority - 1 pt", async () => {
       const faultyArray = [false, false, false, false, true];
@@ -221,7 +247,44 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       }
     });
 
-    test.todo("Hidden test - Simple Majority - Unanimous Agreement - 1 pt");
+    // test.todo("Hidden test - Simple Majority - Unanimous Agreement - 1 pt");
+    it("Hidden test - Simple Majority - Unanimous Agreement - 1 pt", async () => {
+      const faultyArray = [false, false, false, true]; 
+      const initialValues: Value[] = [1, 1, 0, 0];   
+    
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter((el) => el === true).length,
+        initialValues,
+        faultyArray
+      );
+    
+      servers.push(..._servers);
+    
+      await startConsensus(faultyArray.length);
+    
+      const startTime = Date.now();
+      let states = await getNodesState(faultyArray.length);
+    
+      while (Date.now() - startTime < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+    
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        if (faultyArray[i]) {
+          expect(state.decided).toBeNull();
+          expect(state.x).toBeNull();
+          expect(state.k).toBeNull();
+        } else {
+          expect(state.decided).toBeTruthy();
+          expect(state.x).toBe(1);           
+          expect(state.k).toBeLessThanOrEqual(2);
+        }
+      }
+    });
+    
 
     it("Finality is reached - Fault Tolerance Threshold - 1 pt", async () => {
       const faultyArray = [
@@ -284,9 +347,53 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       ).toBeUndefined();
     });
 
-    test.todo(
-      "Hidden test - Fault Tolerance Threshold - Unanimous Agreement - 1 pt"
-    );
+    // test.todo("Hidden test - Fault Tolerance Threshold - Unanimous Agreement - 1 pt");
+    it("Hidden test - Fault Tolerance Threshold - Unanimous Agreement - 1 pt", async () => {
+      const faultyArray = [
+        true,  true,  true,  true,
+        false, false, false, false, false,
+      ];
+      // All non-faulty nodes have the same initial value: 1
+      const initialValues: Value[] = [0, 0, 0, 0, 1, 1, 1, 1, 1];
+    
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter((el) => el === true).length,
+        initialValues,
+        faultyArray
+      );
+    
+      servers.push(..._servers);
+    
+      const time = Date.now();
+    
+      await startConsensus(faultyArray.length);
+    
+      let states = await getNodesState(faultyArray.length);
+    
+      while (Date.now() - time < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+    
+      const consensusValues: (Value | null)[] = [];
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        if (faultyArray[i]) {
+          expect(state.decided).toBeNull();
+          expect(state.x).toBeNull();
+          expect(state.k).toBeNull();
+        } else {
+          expect(state.decided).toBeTruthy();
+          expect(state.x).toBe(1);
+          expect(state.k).not.toBeNull();
+          consensusValues.push(state.x);
+        }
+      }
+    
+      expect(consensusValues.find((el) => el !== consensusValues[0])).toBeUndefined();
+    });
+    
 
     it("Finality is reached - Exceeding Fault Tolerance - 1 pt", async () => {
       const faultyArray = [
@@ -343,9 +450,44 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       }
     });
 
-    test.todo(
-      "Hidden test - Fault Tolerance Threshold - Exceeding Fault Tolerance - 1 pt"
-    );
+    // test.todo("Hidden test - Fault Tolerance Threshold - Exceeding Fault Tolerance - 1 pt");
+
+    it("Hidden test - Fault Tolerance Threshold - Exceeding Fault Tolerance - 1 pt", async () => {
+      const faultyArray = [true, true, true, false, false, false, false];
+      const initialValues: Value[] = [0, 1, 0, 1, 1, 0, 0];
+    
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter(el => el === true).length,
+        initialValues,
+        faultyArray
+      );
+      servers.push(..._servers);
+    
+      const startTime = Date.now();
+      await startConsensus(faultyArray.length);
+    
+      let states = await getNodesState(faultyArray.length);
+      while (Date.now() - startTime < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+    
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        if (faultyArray[i]) {
+          expect(state.decided).toBeNull();
+          expect(state.x).toBeNull();
+          expect(state.k).toBeNull();
+        } else {
+          // Healthy nodes should not reach finality when fault tolerance is exceeded.
+          expect(state.decided).not.toBeTruthy();
+          expect(state.k).toBeGreaterThan(10);
+          expect(state.x).not.toBeNull();
+        }
+      }
+    });
+    
 
     it("Finality is reached - No Faulty Nodes - 1 pt", async () => {
       const faultyArray = [false, false, false, false, false];
@@ -391,9 +533,43 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       }
     });
 
-    test.todo(
-      "Hidden test - Fault Tolerance Threshold - No Faulty Nodes - 1 pt"
-    );
+    // test.todo("Hidden test - Fault Tolerance Threshold - No Faulty Nodes - 1 pt");
+
+    it("Hidden test - Fault Tolerance Threshold - No Faulty Nodes - 1 pt", async () => {
+      const faultyArray = [false, false, false, false, false, false];
+      const initialValues: Value[] = [1, 1, 1, 1, 1, 1];
+    
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter(el => el === true).length,
+        initialValues,
+        faultyArray
+      );
+      servers.push(..._servers);
+    
+      const startTime = Date.now();
+      await startConsensus(faultyArray.length);
+    
+      let states = await getNodesState(faultyArray.length);
+      while (Date.now() - startTime < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+    
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        if (faultyArray[i]) {
+          expect(state.decided).toBeNull();
+          expect(state.x).toBeNull();
+          expect(state.k).toBeNull();
+        } else {
+          expect(state.decided).toBeTruthy();
+          expect(state.x).toBe(1);
+          expect(state.k).toBeLessThanOrEqual(2);
+        }
+      }
+    });
+    
 
     it("Finality is reached - Randomized - 1 pt", async () => {
       const faultyArray = [false, false, true, false, true, false, false];
@@ -448,8 +624,50 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       ).toBeUndefined();
     });
 
-    test.todo("Hidden test - Fault Tolerance Threshold - Randomized - 1 pt");
+    //test.todo("Hidden test - Fault Tolerance Threshold - Randomized - 1 pt");
 
+    it("Hidden test - Fault Tolerance Threshold - Randomized - 1 pt", async () => {
+      const faultyArray = [true, true, true, true, false, false, false, false, false];
+      const initialValues: Value[] = [];
+
+      for (let i = 0; i < 9; i++) {
+        initialValues.push(Math.random() < 0.5 ? 0 : 1);
+      }
+    
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter((el) => el === true).length,
+        initialValues,
+        faultyArray
+      );
+      servers.push(..._servers);
+    
+      const startTime = Date.now();
+      await startConsensus(faultyArray.length);
+    
+      let states = await getNodesState(faultyArray.length);
+      while (Date.now() - startTime < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+    
+      const consensusValues: (Value | null)[] = [];
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        if (faultyArray[i]) {
+          expect(state.decided).toBeNull();
+          expect(state.x).toBeNull();
+          expect(state.k).toBeNull();
+        } else {
+          expect(state.decided).toBeTruthy();
+          expect(state.x).not.toBeNull();
+          consensusValues.push(state.x);
+        }
+      }
+    
+      expect(consensusValues.find((el) => el !== consensusValues[0])).toBeUndefined();
+    });
+    
     it("Hidden Test - Finality is reached - One node - 1 pt", async () => {
       const faultyArray = [false];
 
@@ -484,8 +702,65 @@ describe("Ben-Or decentralized consensus algorithm", () => {
       expect(states[0].x).toBe(1);
     });
 
-    test.todo("Hidden test - Fault Tolerance Threshold - One node - 1 pt");
+    // test.todo("Hidden test - Fault Tolerance Threshold - One node - 1 pt");
+    it("Hidden test - Fault Tolerance Threshold - One node - 1 pt", async () => {
+      const faultyArray = [false];
+      const initialValues: Value[] = [1];
+    
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter((el) => el === true).length,
+        initialValues,
+        faultyArray
+      );
+      servers.push(..._servers);
+    
+      const startTime = Date.now();
+      await startConsensus(faultyArray.length);
+    
+      let states = await getNodesState(faultyArray.length);
+      while (Date.now() - startTime < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+    
+      expect(states.length).toBe(1);
+      expect(states[0].decided).toBeTruthy();
+      expect(states[0].x).toBe(1);
+    });
+    
+    // test.todo("Hidden Test - 1 pt");
 
-    test.todo("Hidden Test - 1 pt");
+    it("Hidden Test - Two-Node Tie - 1 pt", async () => {
+      // Two healthy nodes, one starting with 0 and one with 1.
+      const faultyArray = [false, false];
+      const initialValues: Value[] = [0, 1];
+      
+      const _servers = await launchNetwork(
+        faultyArray.length,
+        faultyArray.filter(el => el === true).length,
+        initialValues,
+        faultyArray
+      );
+      servers.push(..._servers);
+      
+      const startTime = Date.now();
+      await startConsensus(faultyArray.length);
+      
+      let states = await getNodesState(faultyArray.length);
+      while (Date.now() - startTime < timeLimit && !reachedFinality(states)) {
+        await delay(200);
+        states = await getNodesState(faultyArray.length);
+      }
+      
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        expect(state.decided).toBeTruthy();
+        expect(state.x).toBe(1);
+        expect(state.k).toBeLessThanOrEqual(2);
+      }
+    });    
+
+    
   });
 });
